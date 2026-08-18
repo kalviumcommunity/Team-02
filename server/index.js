@@ -7,6 +7,58 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+// Root API Explorer Landing Page (GET /)
+app.get('/', (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <title>Grozo Backend Express REST API</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0b0f19; color: #f8fafc; padding: 2.5rem; max-width: 800px; margin: 0 auto; line-height: 1.6; }
+        h1 { color: #3ecf8e; margin-bottom: 0.5rem; font-size: 1.8rem; }
+        .badge { background: rgba(62,207,142,0.15); color: #3ecf8e; border: 1px solid rgba(62,207,142,0.4); padding: 4px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: 700; }
+        .card { background: #131b2e; border: 1px solid #223052; border-radius: 12px; padding: 1.25rem; margin-top: 1.25rem; }
+        a { color: #60a5fa; text-decoration: none; font-weight: 600; }
+        a:hover { text-decoration: underline; }
+        ul { margin-top: 0.5rem; padding-left: 1.2rem; }
+        li { margin-bottom: 0.4rem; }
+        code { background: #070a12; padding: 2px 6px; border-radius: 4px; color: #f59e0b; font-family: monospace; font-size: 0.9rem; }
+        .btn { display: inline-block; background: #6366f1; color: #fff; padding: 10px 18px; border-radius: 8px; font-weight: 700; margin-top: 1rem; text-decoration: none; }
+        .btn:hover { background: #4f46e5; text-decoration: none; }
+      </style>
+    </head>
+    <body>
+      <h1>🚀 Grozo Backend Express API Server</h1>
+      <span class="badge">● SERVER ACTIVE (PORT 5000)</span>
+      <p style="color: #94a3b8; margin-top: 8px;">
+        This is the REST API backend for the Grozo Replenishment Control Tower & Firebase services.
+      </p>
+
+      <div class="card">
+        <h3 style="margin-top: 0; color: #f8fafc;">🖥️ Web User Interface</h3>
+        <p style="color: #94a3b8; font-size: 0.9rem;">To access the full interactive Control Tower application and Database Studio, open the frontend:</p>
+        <a href="http://localhost:5173" class="btn">👉 Open Web App at http://localhost:5173</a>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top: 0; color: #f8fafc;">📡 Active REST Endpoints</h3>
+        <ul style="color: #94a3b8; font-size: 0.88rem;">
+          <li><a href="/api/health" target="_blank"><code>GET /api/health</code></a> - Backend Health Check</li>
+          <li><a href="/api/requests" target="_blank"><code>GET /api/requests</code></a> - Replenishment Orders JSON Stream</li>
+          <li><a href="/api/products" target="_blank"><code>GET /api/products</code></a> - Master SKU Inventory Catalog</li>
+          <li><a href="/api/stores" target="_blank"><code>GET /api/stores</code></a> - Store Locations & Risk Scores</li>
+          <li><a href="/api/exceptions" target="_blank"><code>GET /api/exceptions</code></a> - Operational Blocker Tickets</li>
+          <li><a href="/api/audit-logs" target="_blank"><code>GET /api/audit-logs</code></a> - Immutable Audit Event History</li>
+          <li><a href="/api/freshness" target="_blank"><code>GET /api/freshness</code></a> - Data Feed Sync Status</li>
+        </ul>
+      </div>
+    </body>
+    </html>
+  `);
+});
+
 // Pre-populated Enterprise Users Database (RBAC)
 const USERS_DB = [
   {

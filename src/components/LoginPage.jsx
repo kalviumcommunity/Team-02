@@ -67,23 +67,23 @@ export const LoginPage = () => {
       }}>
         {/* Left Column: Form & Login */}
         <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '1.5rem' }}>
-            <div style={{ 
-              width: '44px', 
-              height: '44px', 
-              borderRadius: '12px', 
-              background: 'var(--accent-primary)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 0 20px var(--accent-glow)'
-            }}>
-              <Activity size={26} color="#fff" />
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '1.5rem' }}>
+            <img 
+              src="/logo.jpg" 
+              alt="Grozo Official Logo" 
+              style={{ 
+                width: '56px', 
+                height: '56px', 
+                borderRadius: '14px', 
+                objectFit: 'cover',
+                boxShadow: '0 6px 20px rgba(16, 185, 129, 0.3)',
+                border: '2px solid rgba(16, 185, 129, 0.4)'
+              }} 
+            />
             <div>
-              <h1 style={{ fontSize: '1.6rem', fontWeight: 800, letterSpacing: '-0.5px' }}>Grozo Tower</h1>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 600 }}>
-                Enterprise RBAC Portal
+              <h1 style={{ fontSize: '1.75rem', fontWeight: 800, letterSpacing: '-0.5px', lineHeight: 1.1 }}>Grozo</h1>
+              <div style={{ fontSize: '0.75rem', color: '#10b981', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 700 }}>
+                Smart Replenishment &bull; Zero Stockouts
               </div>
             </div>
           </div>

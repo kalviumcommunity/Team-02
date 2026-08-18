@@ -19,8 +19,9 @@ export const RegionalView = () => {
     requests, 
     exceptions, 
     stores, 
-    resolveException, 
-    assignException 
+    activeStoreId,
+    setActiveStoreId,
+    resolveException 
   } = useApp();
 
   const [excSearch, setExcSearch] = useState('');
@@ -28,24 +29,37 @@ export const RegionalView = () => {
   const [resolveModalExc, setResolveModalExc] = useState(null);
   const [resolutionText, setResolutionText] = useState('');
 
-  // Funnel calculations
-  const totalReqs = requests.length;
-  const requestedCount = requests.filter(r => r.status === 'Requested').length;
-  const underReviewCount = requests.filter(r => r.status === 'Under Review').length;
-  const approvedCount = requests.filter(r => r.status === 'Approved' || r.status === 'Partially Approved').length;
-  const allocatedCount = requests.filter(r => r.status === 'Allocated' || r.status === 'Picking' || r.status === 'Packed').length;
-  const dispatchedCount = requests.filter(r => r.status === 'Dispatched').length;
-  const deliveredCount = requests.filter(r => r.status === 'Delivered' || r.status === 'Partially Fulfilled').length;
-  const blockedCount = requests.filter(r => r.status === 'Blocked').length;
+  const isStoreFiltered = activeStoreId && activeStoreId !== 'ALL';
+  const currentFilteredStore = stores.find(s => s.id === activeStoreId);
+
+  // Filter requests based on active store selection
+  const filteredRequests = isStoreFiltered 
+    ? requests.filter(r => r.storeId === activeStoreId)
+    : requests;
+
+  // Funnel calculations for selected store scope
+  const totalReqs = filteredRequests.length;
+  const requestedCount = filteredRequests.filter(r => r.status === 'Requested').length;
+  const underReviewCount = filteredRequests.filter(r => r.status === 'Under Review').length;
+  const approvedCount = filteredRequests.filter(r => r.status === 'Approved' || r.status === 'Partially Approved').length;
+  const allocatedCount = filteredRequests.filter(r => r.status === 'Allocated' || r.status === 'Picking' || r.status === 'Packed').length;
+  const dispatchedCount = filteredRequests.filter(r => r.status === 'Dispatched').length;
+  const deliveredCount = filteredRequests.filter(r => r.status === 'Delivered' || r.status === 'Partially Fulfilled').length;
+  const blockedCount = filteredRequests.filter(r => r.status === 'Blocked').length;
 
   const activeExceptions = exceptions.filter(e => {
+    const matchesStore = !isStoreFiltered || e.storeId === activeStoreId;
     const matchesSearch = !excSearch || 
       e.id.toLowerCase().includes(excSearch.toLowerCase()) || 
       e.storeName.toLowerCase().includes(excSearch.toLowerCase()) ||
       e.productName.toLowerCase().includes(excSearch.toLowerCase());
     const matchesSeverity = excFilter === 'ALL' || e.severity === excFilter;
-    return matchesSearch && matchesSeverity;
+    return matchesStore && matchesSearch && matchesSeverity;
   });
+
+  const displayedStores = isStoreFiltered 
+    ? stores.filter(s => s.id === activeStoreId)
+    : stores;
 
   const handleConfirmResolve = () => {
     if (!resolveModalExc || !resolutionText) return;
@@ -155,9 +169,20 @@ export const RegionalView = () => {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
         {/* Store Comparison */}
         <div className="card-panel">
-          <div className="panel-title" style={{ marginBottom: '1rem' }}>
-            <Store size={20} color="var(--accent-primary)" />
-            <span>Store Risk Index & Backlog Matrix</span>
+          <div className="panel-title" style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Store size={20} color="var(--accent-primary)" />
+              <span>Store Risk Index & Backlog Matrix</span>
+            </div>
+            {isStoreFiltered && (
+              <button 
+                className="btn-secondary" 
+                style={{ padding: '3px 8px', fontSize: '0.74rem' }}
+                onClick={() => setActiveStoreId('ALL')}
+              >
+                Reset to All Stores (5)
+              </button>
+            )}
           </div>
 
           <div className="table-responsive">
@@ -171,7 +196,7 @@ export const RegionalView = () => {
                 </tr>
               </thead>
               <tbody>
-                {stores.map(st => (
+                {displayedStores.map(st => (
                   <tr key={st.id}>
                     <td>
                       <div style={{ fontWeight: 600 }}>{st.name}</div>
@@ -226,7 +251,7 @@ export const RegionalView = () => {
                   borderLeft: `4px solid ${exc.severity === 'Critical' ? 'var(--risk-critical)' : exc.severity === 'High' ? 'var(--risk-high)' : 'var(--risk-medium)'}`
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>{exc.id} &bull; {exc.type}</div>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>{exc.id} &bull; {exc.type}</div>
                     <span className={`badge-risk ${exc.severity}`}>{exc.severity}</span>
                   </div>
 
