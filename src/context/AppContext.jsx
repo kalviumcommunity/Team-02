@@ -8,6 +8,7 @@ import {
   INITIAL_AUDIT_LOG 
 } from '../data/mockData';
 import { apiService } from '../services/apiService';
+import { firestoreSync } from '../services/firestoreSync';
 
 const AppContext = createContext();
 
@@ -224,6 +225,7 @@ export const AppProvider = ({ children }) => {
       details
     };
     setAuditLogs(prev => [newLog, ...prev]);
+    firestoreSync.saveAuditLog(newLog);
   };
 
   const getActorName = () => {
@@ -280,6 +282,7 @@ export const AppProvider = ({ children }) => {
     };
 
     await apiService.createRequest(formattedRequest);
+    await firestoreSync.saveRequest(formattedRequest);
     setRequests(prev => [formattedRequest, ...prev]);
     logAudit(getActorName(), activeRole, newReq.isDraft ? 'Create Draft' : 'Submit Request', reqId, 'None', formattedRequest.status, `Created ${formattedRequest.priority} request`);
     showToast(`Request ${reqId} successfully ${newReq.isDraft ? 'saved as Draft' : 'submitted for approval'}!`);
@@ -413,33 +416,182 @@ export const AppProvider = ({ children }) => {
   };
 
   const confirmReceipt = async (requestId, receivedQtyMap, discrepancyReason = '') => {
-    const isDiscrepancy = discrepancyReason.isNotEmpty;
+    const targetReq = requests.find(r => r.id === requestId);
+    const hasDiscrepancyText = Boolean(discrepancyReason && discrepancyReason.trim().length > 0);
+    const hasQuantityShortage = targetReq ? targetReq.lines.some(l => {
+      const dispatched = l.dispatchedQty || l.approvedQty || l.requestedQty;
+      const rec = Number(receivedQtyMap[l.id] !== undefined ? receivedQtyMap[l.id] : dispatched);
+      return rec < dispatched;
+    }) : false;
+
+    const isDiscrepancy = hasDiscrepancyText || hasQuantityShortage;
     const newStatus = isDiscrepancy ? 'Partially Fulfilled' : 'Delivered';
-    await apiService.updateStatus(requestId, newStatus, discrepancyReason || 'Receipt confirmed', getActorName(), activeRole);
+    const reasonText = discrepancyReason.trim() || (isDiscrepancy ? 'Received partial quantity with shortages' : 'Received full shipment in good condition');
+
+    await apiService.updateStatus(requestId, newStatus, reasonText, getActorName(), activeRole);
+
+    let createdExcId = null;
+    if (isDiscrepancy && targetReq) {
+      createdExcId = `EXC-${Math.floor(100 + Math.random() * 900)}`;
+      const newExc = {
+        id: createdExcId,
+        requestId,
+        storeId: targetReq.storeId,
+        storeName: targetReq.storeName,
+        sku: targetReq.lines[0] ? targetReq.lines[0].sku : 'SKU-MULTIPLE',
+        productName: targetReq.lines[0] ? targetReq.lines[0].productName : 'Multiple Lines',
+        type: 'Delivery Quantity Discrepancy',
+        severity: 'Medium',
+        owner: `${getActorName()} (Store Mgr)`,
+        dueTime: new Date(Date.now() + 6 * 3600 * 1000).toISOString(),
+        status: 'Open',
+        nextAction: 'File carrier credit claim and review inventory adjustment report.',
+        resolutionReason: '',
+        history: [{ timestamp: new Date().toISOString(), actor: getActorName(), action: `Reported Delivery Discrepancy: ${reasonText}` }]
+      };
+      setExceptions(prev => [newExc, ...prev]);
+    }
+
+    // Automatically increase store inventory stock when goods are delivered!
+    if (targetReq) {
+      setProducts(prev => prev.map(p => {
+        const matchingLines = targetReq.lines.filter(l => l.productId === p.id);
+        if (!matchingLines || matchingLines.length === 0) return p;
+        
+        const totalReceived = matchingLines.reduce((sum, line) => {
+          const rec = Number(receivedQtyMap[line.id] !== undefined ? receivedQtyMap[line.id] : (line.dispatchedQty || line.approvedQty || line.requestedQty || 0));
+          return sum + rec;
+        }, 0);
+
+        const newStock = Number(p.currentStoreStock || 0) + totalReceived;
+        return { ...p, currentStoreStock: newStock };
+      }));
+    }
 
     setRequests(prev => prev.map(req => {
       if (req.id !== requestId) return req;
 
       const updatedLines = req.lines.map(line => {
-        const receivedQty = Number(receivedQtyMap[line.id] !== undefined ? receivedQtyMap[line.id] : line.dispatchedQty);
-        return { ...line, receivedQty };
+        const receivedQty = Number(receivedQtyMap[line.id] !== undefined ? receivedQtyMap[line.id] : (line.dispatchedQty || line.approvedQty || line.requestedQty));
+        return { 
+          ...line, 
+          receivedQty,
+          riskLevel: 'Low',
+          riskReason: 'Restocked: Delivery confirmed and shelf inventory replenished.'
+        };
       });
 
-      logAudit(getActorName(), activeRole, isDiscrepancy ? 'Report Delivery Discrepancy' : 'Confirm Full Receipt', req.id, req.status, newStatus, discrepancyReason || 'Received full shipment');
+      logAudit(getActorName(), activeRole, isDiscrepancy ? 'Report Delivery Discrepancy' : 'Confirm Full Receipt', req.id, req.status, newStatus, reasonText);
 
       return {
         ...req,
         status: newStatus,
         lastUpdatedTime: new Date().toISOString(),
         lastUpdatedSource: 'Store POS / App',
+        linkedExceptions: createdExcId ? [...req.linkedExceptions, createdExcId] : req.linkedExceptions,
         lines: updatedLines,
         statusHistory: [
           ...req.statusHistory,
-          { status: newStatus, actor: getActorName(), timestamp: new Date().toISOString(), reason: discrepancyReason || 'Receipt confirmed' }
+          { status: newStatus, actor: getActorName(), timestamp: new Date().toISOString(), reason: reasonText }
         ]
       };
     }));
-    showToast(`Receipt confirmed for ${requestId}!`);
+
+    if (isDiscrepancy) {
+      showToast(`Delivery received with discrepancy notes for ${requestId}. Exception ticket opened.`, 'warning');
+    } else {
+      showToast(`Shipment receipt confirmed for ${requestId}. Order marked Delivered!`, 'success');
+    }
+  };
+
+  const updateDraft = (requestId, updatedData) => {
+    setRequests(prev => prev.map(req => {
+      if (req.id !== requestId) return req;
+
+      const updatedLines = updatedData.lines.map((l, idx) => {
+        const prod = products.find(p => p.id === l.productId) || {};
+        const hoursLeft = prod.salesVelocityPerHour > 0 ? Number((prod.currentStoreStock / prod.salesVelocityPerHour).toFixed(1)) : 24.0;
+        let risk = 'Low';
+        if (hoursLeft < 4) risk = 'Critical';
+        else if (hoursLeft < 8) risk = 'High';
+        else if (hoursLeft < 16) risk = 'Medium';
+
+        return {
+          id: l.id || `L-${Date.now()}-${idx}`,
+          productId: l.productId,
+          sku: prod.sku || l.sku || 'SKU-UNKNOWN',
+          productName: prod.name || l.productName,
+          requestedQty: Number(l.requestedQty),
+          approvedQty: 0,
+          allocatedQty: 0,
+          dispatchedQty: 0,
+          receivedQty: 0,
+          unitOfMeasure: prod.unitOfMeasure || 'Cases',
+          stockoutHours: hoursLeft,
+          riskLevel: risk,
+          riskReason: `${risk} risk: projected store stock reaches 0 in ${hoursLeft}h (${prod.velocityTier || 'Tier A'})`
+        };
+      });
+
+      logAudit(getActorName(), activeRole, 'Edit Draft', req.id, 'Draft', 'Draft', 'Updated line items / SLA');
+
+      return {
+        ...req,
+        priority: updatedData.priority || req.priority,
+        urgencyReason: updatedData.urgencyReason || '',
+        needByTime: updatedData.needByTime || req.needByTime,
+        lastUpdatedTime: new Date().toISOString(),
+        lastUpdatedSource: 'Store POS / App',
+        lines: updatedLines,
+        statusHistory: [
+          ...req.statusHistory,
+          { status: 'Draft', actor: getActorName(), timestamp: new Date().toISOString(), reason: 'Draft updated by store manager' }
+        ]
+      };
+    }));
+    showToast(`Draft ${requestId} updated successfully!`);
+  };
+
+  const submitDraft = async (requestId) => {
+    await apiService.updateStatus(requestId, 'Requested', 'Draft submitted for planner approval', getActorName(), activeRole);
+
+    setRequests(prev => prev.map(req => {
+      if (req.id !== requestId) return req;
+      logAudit(getActorName(), activeRole, 'Submit Draft', req.id, 'Draft', 'Requested', 'Draft submitted for approval');
+
+      return {
+        ...req,
+        status: 'Requested',
+        lastUpdatedTime: new Date().toISOString(),
+        lastUpdatedSource: 'Store POS / App',
+        statusHistory: [
+          ...req.statusHistory,
+          { status: 'Requested', actor: getActorName(), timestamp: new Date().toISOString(), reason: 'Draft submitted as active request' }
+        ]
+      };
+    }));
+    showToast(`Draft ${requestId} submitted to planner review queue!`);
+  };
+
+  const cancelRequest = async (requestId, reason = 'Cancelled by store manager') => {
+    await apiService.updateStatus(requestId, 'Cancelled', reason, getActorName(), activeRole);
+
+    setRequests(prev => prev.map(req => {
+      if (req.id !== requestId) return req;
+      logAudit(getActorName(), activeRole, 'Cancel Request', req.id, req.status, 'Cancelled', reason);
+
+      return {
+        ...req,
+        status: 'Cancelled',
+        lastUpdatedTime: new Date().toISOString(),
+        lastUpdatedSource: 'Store POS / App',
+        statusHistory: [
+          ...req.statusHistory,
+          { status: 'Cancelled', actor: getActorName(), timestamp: new Date().toISOString(), reason }
+        ]
+      };
+    }));
+    showToast(`Request ${requestId} has been cancelled.`, 'info');
   };
 
   const overridePriority = (requestId, newPriority, reason) => {
@@ -473,6 +625,68 @@ export const AppProvider = ({ children }) => {
       };
     }));
     showToast(`Exception ${exceptionId} resolved!`);
+  };
+
+  const batchApproveStandardRequests = async () => {
+    const eligibleReqs = requests.filter(r => 
+      (r.status === 'Requested' || r.status === 'Under Review') && 
+      r.priority === 'Standard' &&
+      r.lines.every(l => {
+        const prod = products.find(p => p.id === l.productId) || {};
+        return Number(l.requestedQty) <= (prod.warehouseAvailable !== undefined ? prod.warehouseAvailable : 100);
+      })
+    );
+
+    if (eligibleReqs.length === 0) {
+      showToast('No eligible Standard cycle requests with sufficient warehouse inventory for batch approval.', 'info');
+      return;
+    }
+
+    for (const req of eligibleReqs) {
+      const fullApprovedQtyMap = {};
+      req.lines.forEach(l => { fullApprovedQtyMap[l.id] = l.requestedQty; });
+      await apiService.updateStatus(req.id, 'Approved', 'Batch approved routine standard cycle replenishment', getActorName(), activeRole);
+      logAudit(getActorName(), activeRole, 'Batch Approve Order', req.id, req.status, 'Approved', 'Batch approved routine standard replenishment');
+    }
+
+    setRequests(prev => prev.map(req => {
+      const isEligible = eligibleReqs.some(e => e.id === req.id);
+      if (!isEligible) return req;
+
+      const updatedLines = req.lines.map(l => ({ ...l, approvedQty: l.requestedQty }));
+      return {
+        ...req,
+        status: 'Approved',
+        lastUpdatedTime: new Date().toISOString(),
+        lastUpdatedSource: 'Planner Console',
+        lines: updatedLines,
+        statusHistory: [
+          ...req.statusHistory,
+          { status: 'Approved', actor: getActorName(), timestamp: new Date().toISOString(), reason: 'Batch approved routine standard cycle replenishment' }
+        ]
+      };
+    }));
+
+    showToast(`Successfully batch-approved ${eligibleReqs.length} standard replenishment requests!`, 'success');
+  };
+
+  const createSupplierPO = (productId, orderQty, vendorName, deliveryEta = 'Tomorrow, 08:00 AM') => {
+    const qty = Number(orderQty);
+    const prod = products.find(p => p.id === productId) || {};
+    const poId = `PO-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    setProducts(prev => prev.map(p => {
+      if (p.id !== productId) return p;
+      return {
+        ...p,
+        warehouseAvailable: (p.warehouseAvailable || 0) + qty
+      };
+    }));
+
+    logAudit(getActorName(), activeRole, 'Supplier PO Issued', poId, 'Procurement', 'Issued', `Ordered ${qty} ${prod.unitOfMeasure || 'units'} of ${prod.name || 'SKU'} from ${vendorName}. ETA: ${deliveryEta}`);
+
+    showToast(`Supplier Purchase Order ${poId} placed with ${vendorName} for +${qty} units!`, 'success');
+    return poId;
   };
 
   const resetData = () => {
@@ -515,7 +729,12 @@ export const AppProvider = ({ children }) => {
       riskFilter,
       setRiskFilter,
       createRequest,
+      updateDraft,
+      submitDraft,
+      cancelRequest,
       approveRequest,
+      batchApproveStandardRequests,
+      createSupplierPO,
       rejectRequest,
       advanceFulfillment,
       recordBlocker,

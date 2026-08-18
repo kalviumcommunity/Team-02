@@ -6,20 +6,26 @@ import {
   AlertTriangle, 
   Package, 
   Clock, 
-  Send 
+  Send,
+  Save
 } from 'lucide-react';
 
-export const CreateRequestModal = ({ onClose, initialProductId = null }) => {
-  const { products, activeStoreId, stores, createRequest, showToast } = useApp();
+export const EditDraftModal = ({ draftRequest, onClose }) => {
+  const { products, stores, updateDraft, submitDraft, showToast } = useApp();
 
-  const [priority, setPriority] = useState('Standard');
-  const [urgencyReason, setUrgencyReason] = useState('');
+  if (!draftRequest) return null;
+
+  const [priority, setPriority] = useState(draftRequest.priority || 'Standard');
+  const [urgencyReason, setUrgencyReason] = useState(draftRequest.urgencyReason || '');
   const [needByHours, setNeedByHours] = useState('8');
 
-  const defaultProdId = initialProductId || products[0]?.id || 'SKU-8821';
-  const [lines, setLines] = useState([
-    { productId: defaultProdId, requestedQty: 25 }
-  ]);
+  const [lines, setLines] = useState(
+    draftRequest.lines.map(l => ({
+      id: l.id,
+      productId: l.productId,
+      requestedQty: l.requestedQty
+    }))
+  );
 
   const handleAddLine = () => {
     const unselected = products.find(p => !lines.some(l => l.productId === p.id)) || products[0];
@@ -27,7 +33,10 @@ export const CreateRequestModal = ({ onClose, initialProductId = null }) => {
   };
 
   const handleRemoveLine = (idx) => {
-    if (lines.length === 1) return;
+    if (lines.length === 1) {
+      showToast('A request must contain at least one product line item.', 'warning');
+      return;
+    }
     setLines(lines.filter((_, i) => i !== idx));
   };
 
@@ -37,8 +46,8 @@ export const CreateRequestModal = ({ onClose, initialProductId = null }) => {
     setLines(updated);
   };
 
-  const handleSubmit = (asDraft = false) => {
-    if (priority === 'Urgent' && !urgencyReason.trim() && !asDraft) {
+  const handleSave = (andSubmit = false) => {
+    if (priority === 'Urgent' && !urgencyReason.trim() && andSubmit) {
       showToast('Urgency Justification Reason is mandatory for Urgent requests.', 'error');
       return;
     }
@@ -50,26 +59,31 @@ export const CreateRequestModal = ({ onClose, initialProductId = null }) => {
 
     const needByTime = new Date(Date.now() + Number(needByHours) * 3600 * 1000).toISOString();
 
-    createRequest({
-      storeId: activeStoreId,
+    updateDraft(draftRequest.id, {
       priority,
       urgencyReason,
       needByTime,
-      lines,
-      isDraft: asDraft
+      lines
     });
+
+    if (andSubmit) {
+      submitDraft(draftRequest.id);
+    }
 
     onClose();
   };
 
-  const storeObj = stores.find(s => s.id === activeStoreId) || stores[0];
+  const storeObj = stores.find(s => s.id === draftRequest.storeId) || stores[0];
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={e => e.stopPropagation()} style={{ maxWidth: '720px' }}>
         <div className="modal-header">
           <div>
-            <div className="modal-title">Create Replenishment Request</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div className="modal-title">Edit Draft Request: {draftRequest.id}</div>
+              <span className="badge-status Draft">Draft</span>
+            </div>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
               {storeObj.name} ({storeObj.region})
             </div>
@@ -140,6 +154,7 @@ export const CreateRequestModal = ({ onClose, initialProductId = null }) => {
             {lines.map((line, idx) => {
               const selectedProd = products.find(p => p.id === line.productId) || products[0];
               const hoursLeft = selectedProd.salesVelocityPerHour > 0 ? (selectedProd.currentStoreStock / selectedProd.salesVelocityPerHour).toFixed(1) : 24;
+              const isCritical = parseFloat(hoursLeft) < 4;
 
               return (
                 <div key={idx} style={{ 
@@ -169,6 +184,7 @@ export const CreateRequestModal = ({ onClose, initialProductId = null }) => {
                     <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Req Quantity</label>
                     <input
                       type="number"
+                      min="1"
                       className="search-input"
                       value={line.requestedQty}
                       onChange={e => handleLineChange(idx, 'requestedQty', Number(e.target.value))}
@@ -177,7 +193,7 @@ export const CreateRequestModal = ({ onClose, initialProductId = null }) => {
 
                   <div style={{ width: '140px', fontSize: '0.75rem' }}>
                     <div style={{ color: 'var(--text-muted)' }}>Store Stock: <strong>{selectedProd.currentStoreStock}</strong></div>
-                    <div style={{ color: hoursLeft < 4 ? 'var(--risk-critical)' : 'var(--risk-low)', fontWeight: 600 }}>
+                    <div style={{ color: isCritical ? 'var(--risk-critical)' : 'var(--risk-low)', fontWeight: 600 }}>
                       ~{hoursLeft}h stock left
                     </div>
                   </div>
@@ -195,15 +211,16 @@ export const CreateRequestModal = ({ onClose, initialProductId = null }) => {
 
         {/* Modal Footer Actions */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <button className="btn-secondary" onClick={() => handleSubmit(true)}>
-            Save as Draft
+          <button className="btn-secondary" onClick={() => handleSave(false)}>
+            <Save size={15} />
+            <span>Save Draft Changes</span>
           </button>
 
           <div style={{ display: 'flex', gap: '10px' }}>
             <button className="btn-secondary" onClick={onClose}>Cancel</button>
-            <button className="btn-primary" onClick={() => handleSubmit(false)}>
+            <button className="btn-primary" onClick={() => handleSave(true)}>
               <Send size={15} />
-              <span>Submit Replenishment Request</span>
+              <span>Save & Submit Request</span>
             </button>
           </div>
         </div>

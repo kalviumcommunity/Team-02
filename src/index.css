@@ -452,6 +452,9 @@ button {
 .badge-status.Blocked { background: rgba(239, 68, 68, 0.2); color: #dc2626; border: 1px solid #ef4444; }
 [data-theme='dark'] .badge-status.Blocked { color: #ef4444; }
 
+.badge-status.Cancelled { background: rgba(100, 116, 139, 0.15); color: #64748b; border: 1px solid rgba(100, 116, 139, 0.3); }
+[data-theme='dark'] .badge-status.Cancelled { color: #94a3b8; }
+
 /* Risk Indicator Badges */
 .badge-risk {
   display: inline-flex;

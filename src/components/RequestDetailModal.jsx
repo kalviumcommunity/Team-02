@@ -1,4 +1,5 @@
 import React from 'react';
+import { useApp } from '../context/AppContext';
 import { 
   Package, 
   Clock, 
@@ -12,7 +13,12 @@ import {
 } from 'lucide-react';
 
 export const RequestDetailModal = ({ request, onClose, onActionClick }) => {
+  const { exceptions } = useApp();
   if (!request) return null;
+
+  const matchedExceptions = (request.linkedExceptions || [])
+    .map(excId => exceptions?.find(e => e.id === excId))
+    .filter(Boolean);
 
   const lifecycleStages = ['Requested', 'Under Review', 'Approved', 'Allocated', 'Picking', 'Packed', 'Dispatched', 'Delivered'];
 
@@ -131,13 +137,69 @@ export const RequestDetailModal = ({ request, onClose, onActionClick }) => {
           </div>
         </div>
 
+        {/* Carrier & Shipment Tracking (if dispatched/delivered) */}
+        {request.shipmentRef && (
+          <div style={{ 
+            background: 'var(--bg-dark)', 
+            border: '1px solid var(--border-color)', 
+            padding: '10px 14px', 
+            borderRadius: '8px', 
+            fontSize: '0.85rem',
+            marginBottom: '1rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Truck size={16} color="var(--status-dispatch)" />
+              <span><strong>Carrier:</strong> {request.carrier || 'Grozo Logistics Fleet'}</span>
+            </div>
+            <span style={{ color: 'var(--text-muted)' }}>Tracking Ref: <code style={{ color: 'var(--status-dispatch)', fontWeight: 600 }}>{request.shipmentRef}</code></span>
+          </div>
+        )}
+
+        {/* Linked Exceptions & Blocker Tickets */}
+        {matchedExceptions.length > 0 && (
+          <div style={{ marginBottom: '1.25rem' }}>
+            <div style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px', color: '#f87171' }}>
+              <ShieldAlert size={16} />
+              <span>Linked Operational Exceptions & Blockers ({matchedExceptions.length})</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {matchedExceptions.map(exc => (
+                <div key={exc.id} style={{ 
+                  padding: '10px 14px', 
+                  background: 'rgba(239, 68, 68, 0.08)', 
+                  border: '1px solid rgba(239, 68, 68, 0.25)', 
+                  borderRadius: '8px',
+                  fontSize: '0.82rem'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontWeight: 700, color: '#f87171' }}>{exc.id}</span>
+                      <span style={{ fontWeight: 600 }}>&bull; {exc.type}</span>
+                    </div>
+                    <span className={`badge-risk ${exc.severity}`}>{exc.severity} Severity</span>
+                  </div>
+                  <div style={{ color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                    <strong>Owner:</strong> {exc.owner} &bull; <strong>Status:</strong> <span style={{ fontWeight: 600, color: exc.status === 'Resolved' ? '#10b981' : '#f59e0b' }}>{exc.status}</span>
+                  </div>
+                  <div style={{ color: 'var(--text-muted)' }}>
+                    <strong>Action Required:</strong> {exc.nextAction}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Audit History Timeline */}
         <div>
           <div style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <History size={16} color="var(--accent-primary)" />
             <span>Immutable Audit Trail & Provenance History</span>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '180px', overflowY: 'auto' }}>
             {request.statusHistory.map((hist, i) => (
               <div key={i} style={{ 
                 padding: '8px 12px', 

@@ -59,9 +59,25 @@ export const Header = ({ onOpenCreateModal }) => {
       <header className="grozo-navbar">
         {/* Brand Logo & Strict Role Access Badge */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-          <div className="brand-logo">
-            <Activity size={28} />
-            <span>Grozo <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--accent-primary)', textTransform: 'uppercase', letterSpacing: '1px' }}>Control Tower</span></span>
+          <div className="brand-logo" style={{ cursor: 'pointer' }}>
+            <img 
+              src="/logo.jpg" 
+              alt="Grozo Logo" 
+              style={{ 
+                height: '42px', 
+                width: '42px', 
+                borderRadius: '10px', 
+                objectFit: 'cover',
+                boxShadow: '0 0 12px rgba(16, 185, 129, 0.25)',
+                border: '1.5px solid rgba(255, 255, 255, 0.15)'
+              }} 
+            />
+            <div style={{ display: 'flex', flexDirection: 'column', leadingTrim: 'both' }}>
+              <span style={{ fontSize: '1.25rem', fontWeight: 800, lineHeight: 1.1 }}>Grozo</span>
+              <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+                Smart Replenishment
+              </span>
+            </div>
           </div>
 
           {/* Strict RBAC Active Role Indicator (Only shows user's permitted workspace) */}
@@ -95,21 +111,42 @@ export const Header = ({ onOpenCreateModal }) => {
             <span style={{ fontSize: '0.8rem' }}>{theme === 'light' ? 'Dark Mode' : 'Light Mode'}</span>
           </button>
 
-          {/* Store Selector (Visible if Store Manager) */}
-          {activeRole === 'store_manager' && (
+          {/* Store Location Scope: Locked badge for Store Manager, Dropdown for Regional / Admin */}
+          {activeRole === 'store_manager' ? (
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '6px',
+              padding: '6px 12px',
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '20px',
+              fontSize: '0.82rem',
+              fontWeight: 600,
+              color: 'var(--text-primary)'
+            }}>
+              <Store size={15} color="#3b82f6" />
+              <span>{stores.find(s => s.id === activeStoreId)?.name || 'Grozo Market #101'}</span>
+              <span style={{ fontSize: '0.68rem', background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', padding: '1px 6px', borderRadius: '8px', fontWeight: 700 }}>
+                ASSIGNED
+              </span>
+            </div>
+          ) : (activeRole === 'regional_manager' || activeRole === 'sys_admin') ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Store size={16} style={{ color: 'var(--text-muted)' }} />
               <select
                 className="filter-select"
                 value={activeStoreId}
                 onChange={e => setActiveStoreId(e.target.value)}
+                title="Filter View by Store Location"
               >
+                <option value="ALL">All Network Stores (5)</option>
                 {stores.map(st => (
                   <option key={st.id} value={st.id}>{st.name}</option>
                 ))}
               </select>
             </div>
-          )}
+          ) : null}
 
           {/* Data Freshness Indicator */}
           <button 
